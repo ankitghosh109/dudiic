@@ -1,0 +1,19 @@
+# Ignore artifacts:
+node_modules/
+.pnpm-store/
+.turbo/
+
+.next/
+out/
+dist/
+build/
+
+coverage/
+
+*.tsbuildinfo
+next-env.d.ts
+
+*.log
+.DS_Store
+
+helpers

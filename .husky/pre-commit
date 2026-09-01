@@ -1,0 +1,10 @@
+
+echo "🔍 Running lint-staged on staged files..."
+pnpm run lint:staged
+
+echo "✅ Linting complete."
+
+echo "🧠 Checking types..."
+pnpm run typecheck
+
+echo "✅ Proceeding with commit."

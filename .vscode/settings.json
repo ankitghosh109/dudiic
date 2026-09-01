@@ -1,6 +1,19 @@
 {
+  // start >>> for Turborepo
   "json.schemaDownload.trustedDomains": {
     "https://turbo.build/": true
-  }
+  },
+  // <<< end
 
+  // start >>> for prettier
+  "editor.defaultFormatter": "esbenp.prettier-vscode",
+  "editor.formatOnSave": true,
+  "editor.codeActionsOnSave": {
+    "source.fixAll.eslint": "always"
+  },
+  // <<< end
+
+  // start >>> cSpell Words
+  "cSpell.words": ["dudiic"]
+  // <<< end
 }
