@@ -1,0 +1,56 @@
+# Dependencies
+node_modules
+**/node_modules
+
+# pnpm
+.pnpm-store
+**/.pnpm-store
+
+# Build output
+dist
+**/dist
+
+# Next.js
+.next
+**/.next
+out
+**/out
+
+# Turborepo
+.turbo
+**/.turbo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Testing / coverage
+coverage
+**/coverage
+
+# Cache
+.cache
+**/.cache
+
+# Docker
+Dockerfile*
+docker-compose*.yml
+.dockerignore

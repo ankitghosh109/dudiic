@@ -1,0 +1,23 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      # Bind entire monorepo
+      - .:/app
+
+      # Keep container's node_modules
+      - /app/node_modules
+
+      # Keep api node_modules too
+      - /app/apps/api/node_modules
+
+    env_file:
+      - .env.development.local
+
+    command: pnpm --filter @dudiic/api dev

@@ -14,6 +14,6 @@
   // <<< end
 
   // start >>> cSpell Words
-  "cSpell.words": ["dudiic"]
+  "cSpell.enabled": false
   // <<< end
 }
