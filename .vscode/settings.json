@@ -14,6 +14,11 @@
   // <<< end
 
   // start >>> cSpell Words
-  "cSpell.enabled": false
+  "cSpell.enabled": false,
+  // <<< end
+
+  // customize explorer start >>>
+  "workbench.tree.indent": 18,
+  "explorer.compactFolders": false
   // <<< end
 }

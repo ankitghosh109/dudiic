@@ -1,7 +1,11 @@
+import { Email } from '../value-objects/email.vo.js';
+import { UserId } from '../value-objects/user-id.vo.js';
+import { UserPassword } from '../value-objects/user-password.vo.js';
+
 export interface UserProps {
-  id: string;
-  email: string;
-  passwordHash: string;
+  id: UserId;
+  email: Email;
+  passwordHash: UserPassword;
   createdAt: Date;
 }
 
@@ -12,15 +16,15 @@ export class User {
     return new User(props);
   }
 
-  get id(): string {
+  get id(): UserId {
     return this.props.id;
   }
 
-  get email(): string {
+  get email(): Email {
     return this.props.email;
   }
 
-  get passwordHash(): string {
+  get passwordHash(): UserPassword {
     return this.props.passwordHash;
   }
 

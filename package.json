@@ -12,13 +12,6 @@
     "lint:staged": "lint-staged",
     "prepare": "husky"
   },
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "11.25.0",
-      "onFail": "download"
-    }
-  },
   "devDependencies": {
     "husky": "^9.1.7",
     "lint-staged": "^17.4.1",

@@ -1,11 +1,11 @@
-FROM node:22-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
-# Enable pnpm
-RUN corepack enable
+# Enable Corepack for pnpm
+RUN npm install -g pnpm@11.25.0
 
-# Copy workspace files
+# Copy workspace/package files first
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/api/package.json ./apps/api/package.json
 
@@ -15,6 +15,8 @@ RUN pnpm install --frozen-lockfile
 # Copy source
 COPY . .
 
-EXPOSE 3000
+WORKDIR /app/apps/api
 
-CMD ["pnpm", "--filter", "@dudiic/api", "dev"]
+EXPOSE 6000
+
+CMD ["pnpm", "dev"]

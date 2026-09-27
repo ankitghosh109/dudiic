@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 
-import { RegisterUser } from '../../application/use-cases/register-user.js';
+import { RegisterUser } from '../../application/use-cases/register-user.use-case.impl.js';
 
 export class IdentityController {
   constructor(private readonly registerUser: RegisterUser) {}
