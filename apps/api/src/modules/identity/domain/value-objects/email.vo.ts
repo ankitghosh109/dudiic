@@ -9,7 +9,7 @@ export class Email {
     return new Email(value);
   }
 
-  getValue(): string {
+  get getValue(): string {
     return this.value;
   }
 }

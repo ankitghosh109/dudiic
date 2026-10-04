@@ -9,7 +9,7 @@ export class UserId {
     return new UserId(value);
   }
 
-  getValue(): string {
+  get getValue(): string {
     return this.value;
   }
 }

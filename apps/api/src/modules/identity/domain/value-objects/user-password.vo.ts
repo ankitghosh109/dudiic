@@ -9,7 +9,7 @@ export class UserPassword {
     return new UserPassword(value);
   }
 
-  getValue(): string {
+  get getValue(): string {
     return this.value;
   }
 }

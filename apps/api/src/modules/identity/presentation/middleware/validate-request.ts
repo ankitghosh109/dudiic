@@ -1,5 +1,3 @@
-// presentation/http/middlewares/validate.ts
-
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 

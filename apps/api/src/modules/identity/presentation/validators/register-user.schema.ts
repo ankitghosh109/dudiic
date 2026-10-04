@@ -1,5 +1,3 @@
-// presentation/http/validators/register-user.validator.ts
-
 import { z } from 'zod';
 
 export const registerUserSchema = z.object({
