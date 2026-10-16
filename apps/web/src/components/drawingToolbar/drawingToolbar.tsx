@@ -5,7 +5,7 @@ import styles from '@/components/drawingToolbar/drawingToolbar.module.css';
 import { Brush, Circle, Eraser, Hand, MousePointer2, Pencil, Square, Type } from 'lucide-react';
 
 import type { RefObject } from 'react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 const tools = [
   {
@@ -81,17 +81,51 @@ const nativeCursors = {
 
 type DrawingToolbarProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
+  currentTool?: string;
+  onToolChange?: (tool: string) => void;
+  zoom?: number;
+  isSpacePressed?: boolean;
 };
 
-export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
-  const [currentTool, setCurrentTool] = useState('select');
+export default function DrawingToolbar({
+  canvasRef,
+  currentTool: currentToolProp,
+  onToolChange,
+  zoom = 1,
+  isSpacePressed = false,
+}: DrawingToolbarProps) {
+  const [internalTool, setInternalTool] = useState('pen');
+  const currentTool = currentToolProp ?? internalTool;
 
   const squareCursorRef = useRef<HTMLDivElement>(null);
   const circleCursorRef = useRef<HTMLDivElement>(null);
+  const lastMousePos = useRef({ x: -100, y: -100 });
 
   const changeTool = (newTool: string) => {
-    setCurrentTool(newTool);
+    if (onToolChange) {
+      onToolChange(newTool);
+    } else {
+      setInternalTool(newTool);
+    }
   };
+
+  const updateSquareCursorSize = useCallback(() => {
+    if (!squareCursorRef.current) return;
+    const size = Math.max(1, zoom);
+    squareCursorRef.current.style.width = `${size}px`;
+    squareCursorRef.current.style.height = `${size}px`;
+    squareCursorRef.current.style.left = `${lastMousePos.current.x - size / 2}px`;
+    squareCursorRef.current.style.top = `${lastMousePos.current.y - size / 2}px`;
+  }, [zoom]);
+
+  const updateCircleCursorSize = useCallback(() => {
+    if (!circleCursorRef.current) return;
+    const size = Math.max(1, zoom);
+    circleCursorRef.current.style.width = `${size}px`;
+    circleCursorRef.current.style.height = `${size}px`;
+    circleCursorRef.current.style.left = `${lastMousePos.current.x - size / 2}px`;
+    circleCursorRef.current.style.top = `${lastMousePos.current.y - size / 2}px`;
+  }, [zoom]);
 
   // ------------------------------------------
   // Change cursor when currentTool changes
@@ -101,6 +135,18 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
     const canvas = canvasRef.current;
 
     if (!canvas) return;
+
+    if (isSpacePressed) {
+      if (squareCursorRef.current) {
+        squareCursorRef.current.style.display = 'none';
+      }
+      if (circleCursorRef.current) {
+        circleCursorRef.current.style.display = 'none';
+      }
+      document.body.style.cursor = 'grab';
+      canvas.style.cursor = 'grab';
+      return;
+    }
 
     const current = tools.find((tool) => tool.id === currentTool);
 
@@ -124,10 +170,12 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
       canvas.style.cursor = 'none';
 
       if (current.cursor === 'squareCursor') {
+        updateSquareCursorSize();
         squareCursorRef.current?.style.setProperty('display', 'block');
       }
 
       if (current.cursor === 'circleCursor') {
+        updateCircleCursorSize();
         circleCursorRef.current?.style.setProperty('display', 'block');
       }
 
@@ -143,13 +191,15 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
 
     document.body.style.cursor = nativeCursor;
     canvas.style.cursor = nativeCursor;
-  }, [currentTool, canvasRef]);
+  }, [currentTool, canvasRef, isSpacePressed, updateCircleCursorSize, updateSquareCursorSize]);
 
   // ------------------------------------------
   // Move custom cursor
   // ------------------------------------------
 
   useEffect(() => {
+    if (isSpacePressed) return;
+
     const current = tools.find((tool) => tool.id === currentTool);
 
     if (!current || current.cursorType !== 'custom') {
@@ -157,20 +207,19 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
     }
 
     const handlePointerMove = (event: PointerEvent) => {
-      let cursor: HTMLDivElement | null = null;
+      lastMousePos.current = { x: event.clientX, y: event.clientY };
 
-      if (current.cursor === 'squareCursor') {
-        cursor = squareCursorRef.current;
+      if (current.cursor === 'squareCursor' && squareCursorRef.current) {
+        const size = Math.max(1, zoom);
+        squareCursorRef.current.style.left = `${event.clientX - size / 2}px`;
+        squareCursorRef.current.style.top = `${event.clientY - size / 2}px`;
       }
 
-      if (current.cursor === 'circleCursor') {
-        cursor = circleCursorRef.current;
+      if (current.cursor === 'circleCursor' && circleCursorRef.current) {
+        const size = Math.max(1, zoom);
+        circleCursorRef.current.style.left = `${event.clientX - size / 2}px`;
+        circleCursorRef.current.style.top = `${event.clientY - size / 2}px`;
       }
-
-      if (!cursor) return;
-
-      cursor.style.left = `${event.clientX - 5}px`;
-      cursor.style.top = `${event.clientY - 5}px`;
     };
 
     const handlePointerLeave = () => {
@@ -185,10 +234,12 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
 
     const handlePointerEnter = () => {
       if (current.cursor === 'squareCursor') {
+        updateSquareCursorSize();
         squareCursorRef.current?.style.setProperty('display', 'block');
       }
 
       if (current.cursor === 'circleCursor') {
+        updateCircleCursorSize();
         circleCursorRef.current?.style.setProperty('display', 'block');
       }
     };
@@ -206,7 +257,7 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
 
       document.documentElement.removeEventListener('pointerenter', handlePointerEnter);
     };
-  }, [currentTool]);
+  }, [currentTool, isSpacePressed, zoom, updateCircleCursorSize, updateSquareCursorSize]);
 
   // ------------------------------------------
   // Cleanup
@@ -242,10 +293,12 @@ export default function DrawingToolbar({ canvasRef }: DrawingToolbarProps) {
             aria-label={label}
             title={label}
             onPointerDown={(event) => {
-              squareCursorRef.current?.style.setProperty('left', `${event.clientX}px`);
-              squareCursorRef.current?.style.setProperty('top', `${event.clientY}px`);
-              circleCursorRef.current?.style.setProperty('left', `${event.clientX}px`);
-              circleCursorRef.current?.style.setProperty('top', `${event.clientY}px`);
+              lastMousePos.current = { x: event.clientX, y: event.clientY };
+              const size = Math.max(1, zoom);
+              squareCursorRef.current?.style.setProperty('left', `${event.clientX - size / 2}px`);
+              squareCursorRef.current?.style.setProperty('top', `${event.clientY - size / 2}px`);
+              circleCursorRef.current?.style.setProperty('left', `${event.clientX - size / 2}px`);
+              circleCursorRef.current?.style.setProperty('top', `${event.clientY - size / 2}px`);
               changeTool(id);
             }}
           >

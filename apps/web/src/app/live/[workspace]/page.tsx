@@ -4,8 +4,13 @@
 import Toolbar from '@/components/drawingToolbar/drawingToolbar';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
-type Point = { x: number; y: number };
-type Stroke = { points: Point[]; color: string; width: number };
+type Point = { x: number; y: number; opacity?: number };
+type Stroke = {
+  points: Point[];
+  color: string;
+  width: number;
+  mode?: 'segment' | 'pixel' | 'brush';
+};
 
 /* ---------- CONFIG ---------- */
 
@@ -23,6 +28,41 @@ const BACKGROUND = '#ffffff';
 const DOC_SIZE = 4096;
 const HALF = DOC_SIZE / 2;
 
+function getCirclePixelCoverages(cx: number, cy: number, radius = 0.5) {
+  const SAMPLES = 20;
+  const step = (radius * 2) / SAMPLES;
+  const start = -radius + step / 2;
+  const r2 = radius * radius;
+
+  const counts: Record<string, { x: number; y: number; count: number }> = {};
+  let totalInside = 0;
+
+  for (let i = 0; i < SAMPLES; i++) {
+    const u = start + i * step;
+    for (let j = 0; j < SAMPLES; j++) {
+      const v = start + j * step;
+      if (u * u + v * v <= r2) {
+        totalInside++;
+        const px = Math.floor(cx + u);
+        const py = Math.floor(cy + v);
+        const key = `${px},${py}`;
+        if (!counts[key]) {
+          counts[key] = { x: px, y: py, count: 0 };
+        }
+        counts[key].count++;
+      }
+    }
+  }
+
+  if (totalInside === 0) return [];
+
+  return Object.values(counts).map((c) => ({
+    x: c.x,
+    y: c.y,
+    opacity: c.count / totalInside,
+  }));
+}
+
 export default function Workspace() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rasterRef = useRef<HTMLCanvasElement | null>(null);
@@ -35,10 +75,15 @@ export default function Workspace() {
   const isPanning = useRef(false);
   const spacePressed = useRef(false);
   const lastPanPoint = useRef({ x: 0, y: 0 });
-  const hoverCell = useRef<Point | null>(null);
+  const lastBrushPoint = useRef<Point | null>(null);
 
+  const [currentTool, setCurrentTool] = useState('pen');
+  const [zoom, setZoom] = useState(1);
   const [zoomPercentage, setZoomPercentage] = useState(100);
   const [isSpacePressed, setIsSpacePressed] = useState(false);
+  const paintColor = '#000000';
+  const paintOpacity = 1;
+  const paintSize = 2;
 
   /* ---------- RASTER LAYER ---------- */
 
@@ -52,13 +97,74 @@ export default function Workspace() {
     return rasterRef.current;
   }, []);
 
+  const drawPixel = useCallback(
+    (px: number, py: number, color: string, opacity = 1) => {
+      if (px < -HALF || px >= HALF || py < -HALF || py >= HALF) return;
+      const rctx = getRaster().getContext('2d');
+      if (!rctx) return;
+      rctx.save();
+      rctx.translate(HALF, HALF);
+      rctx.fillStyle = color;
+      rctx.globalAlpha = opacity;
+      rctx.fillRect(px, py, 1, 1);
+      rctx.restore();
+    },
+    [getRaster],
+  );
+
+  const drawCircleBrush = useCallback(
+    (cx: number, cy: number, color: string, radius: number, opacity: number) => {
+      const coverages = getCirclePixelCoverages(cx, cy, radius);
+      for (const cov of coverages) {
+        const pixelOpacity = cov.opacity * opacity;
+        drawPixel(cov.x, cov.y, color, pixelOpacity);
+        points.current.push({ x: cov.x, y: cov.y, opacity: pixelOpacity });
+      }
+    },
+    [drawPixel],
+  );
+
+  const drawLinePixels = useCallback(
+    (x0: number, y0: number, x1: number, y1: number, color: string, opacity: number) => {
+      const dx = Math.abs(x1 - x0);
+      const dy = Math.abs(y1 - y0);
+      const sx = x0 < x1 ? 1 : -1;
+      const sy = y0 < y1 ? 1 : -1;
+      let err = dx - dy;
+
+      let curX = x0;
+      let curY = y0;
+
+      while (true) {
+        drawPixel(curX, curY, color, opacity);
+        const last = points.current[points.current.length - 1];
+        if (!last || last.x !== curX || last.y !== curY) {
+          points.current.push({ x: curX, y: curY });
+        }
+
+        if (curX === x1 && curY === y1) break;
+        const e2 = 2 * err;
+        if (e2 > -dy) {
+          err -= dy;
+          curX += sx;
+        }
+        if (e2 < dx) {
+          err += dx;
+          curY += sy;
+        }
+      }
+    },
+    [drawPixel],
+  );
+
   const drawSegment = useCallback(
-    (a: Point, b: Point, color: string, width: number) => {
+    (a: Point, b: Point, color: string, width: number, opacity = 1) => {
       const rctx = getRaster().getContext('2d');
       if (!rctx) return;
       rctx.save();
       rctx.translate(HALF, HALF);
       rctx.strokeStyle = color;
+      rctx.globalAlpha = opacity;
       rctx.lineWidth = width;
       rctx.lineCap = 'round';
       rctx.lineJoin = 'round';
@@ -76,6 +182,12 @@ export default function Workspace() {
     raster.getContext('2d')?.clearRect(0, 0, DOC_SIZE, DOC_SIZE);
     for (const s of strokes.current) {
       if (s.points.length === 0) continue;
+      if (s.mode === 'pixel' || s.mode === 'brush') {
+        for (const p of s.points) {
+          drawPixel(p.x, p.y, s.color, p.opacity ?? 1);
+        }
+        continue;
+      }
       if (s.points.length === 1) {
         drawSegment(s.points[0], s.points[0], s.color, s.width);
         continue;
@@ -84,7 +196,7 @@ export default function Workspace() {
         drawSegment(s.points[i - 1], s.points[i], s.color, s.width);
       }
     }
-  }, [drawSegment, getRaster]);
+  }, [drawPixel, drawSegment, getRaster]);
 
   /* ---------- COORDS ---------- */
 
@@ -129,16 +241,6 @@ export default function Workspace() {
       ctx.lineTo(w, sy);
     }
     ctx.stroke();
-  }, []);
-
-  const drawHoverCell = useCallback((ctx: CanvasRenderingContext2D) => {
-    const cell = hoverCell.current;
-    const { x, y, zoom } = camera.current;
-    if (!cell || zoom < PIXEL_GRID_ZOOM) return;
-
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
-    ctx.strokeRect(cell.x * zoom + x + 0.5, cell.y * zoom + y + 0.5, zoom - 1, zoom - 1);
   }, []);
 
   /* ---------- RENDER ---------- */
@@ -191,8 +293,7 @@ export default function Workspace() {
     }
 
     drawPixelGrid(ctx);
-    drawHoverCell(ctx);
-  }, [drawHoverCell, drawPixelGrid, getRaster]);
+  }, [drawPixelGrid, getRaster]);
 
   /* ---------- RESIZE ---------- */
 
@@ -243,6 +344,7 @@ export default function Workspace() {
       camera.current.x = sx - world.x * newZoom;
       camera.current.y = sy - world.y * newZoom;
 
+      setZoom(newZoom);
       setZoomPercentage(newZoom * 100);
       render();
     },
@@ -267,6 +369,7 @@ export default function Workspace() {
     camera.current.zoom = 1;
     camera.current.x = cx - w.x;
     camera.current.y = cy - w.y;
+    setZoom(1);
     setZoomPercentage(100);
     render();
   }, [render, screenToWorld]);
@@ -334,7 +437,7 @@ export default function Workspace() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    if (spacePressed.current) {
+    if (spacePressed.current || currentTool === 'hand') {
       isPanning.current = true;
       lastPanPoint.current = { x: e.clientX, y: e.clientY };
       canvas.setPointerCapture(e.pointerId);
@@ -345,8 +448,29 @@ export default function Workspace() {
     canvas.setPointerCapture(e.pointerId);
 
     const p = toWorld(e);
+
+    if (currentTool === 'pen') {
+      const pixelX = Math.floor(p.x);
+      const pixelY = Math.floor(p.y);
+      if (pixelX >= -HALF && pixelX < HALF && pixelY >= -HALF && pixelY < HALF) {
+        drawPixel(pixelX, pixelY, paintColor, paintOpacity);
+        points.current = [{ x: pixelX, y: pixelY }];
+        render();
+      } else {
+        points.current = [];
+      }
+      return;
+    }
+
+    if (currentTool === 'brush') {
+      lastBrushPoint.current = p;
+      drawCircleBrush(p.x, p.y, paintColor, Math.max(0.5, paintSize / 2), paintOpacity);
+      render();
+      return;
+    }
+
     points.current = [p];
-    drawSegment(p, p, 'black', 2); // dot on single click
+    drawSegment(p, p, paintColor, paintSize, paintOpacity); // dot on single click
     render();
   };
 
@@ -359,17 +483,52 @@ export default function Workspace() {
       return;
     }
 
+    if (!isDrawing.current) return;
+
     const p = toWorld(e);
 
-    // Snap hover highlight to the pixel under the cursor
-    hoverCell.current = { x: Math.floor(p.x), y: Math.floor(p.y) };
+    if (currentTool === 'pen') {
+      const pixelX = Math.floor(p.x);
+      const pixelY = Math.floor(p.y);
+      if (pixelX < -HALF || pixelX >= HALF || pixelY < -HALF || pixelY >= HALF) return;
 
-    if (isDrawing.current) {
-      const prev = points.current[points.current.length - 1];
-      points.current.push(p);
-      drawSegment(prev, p, 'black', 2); // paint into raster live
+      const last = points.current[points.current.length - 1];
+      if (last && last.x === pixelX && last.y === pixelY) {
+        return;
+      }
+
+      if (last) {
+        drawLinePixels(last.x, last.y, pixelX, pixelY, paintColor, paintOpacity);
+      } else {
+        drawPixel(pixelX, pixelY, paintColor, paintOpacity);
+        points.current.push({ x: pixelX, y: pixelY });
+      }
+      render();
+      return;
     }
 
+    if (currentTool === 'brush') {
+      const lastP = lastBrushPoint.current ?? p;
+      const dist = Math.hypot(p.x - lastP.x, p.y - lastP.y);
+
+      const stepDist = 0.5;
+      const steps = Math.max(1, Math.ceil(dist / stepDist));
+
+      for (let step = 1; step <= steps; step++) {
+        const t = step / steps;
+        const curX = lastP.x + (p.x - lastP.x) * t;
+        const curY = lastP.y + (p.y - lastP.y) * t;
+        drawCircleBrush(curX, curY, paintColor, Math.max(0.5, paintSize / 2), paintOpacity);
+      }
+
+      lastBrushPoint.current = p;
+      render();
+      return;
+    }
+
+    const prev = points.current[points.current.length - 1];
+    points.current.push(p);
+    drawSegment(prev, p, paintColor, paintSize, paintOpacity); // paint into raster live
     render();
   };
 
@@ -378,14 +537,16 @@ export default function Workspace() {
       isPanning.current = false;
       return;
     }
+    lastBrushPoint.current = null;
     if (!isDrawing.current) return;
     isDrawing.current = false;
 
     if (points.current.length > 0) {
       strokes.current.push({
         points: [...points.current],
-        color: 'black',
-        width: 2,
+        color: paintColor,
+        width: paintSize,
+        mode: currentTool === 'pen' ? 'pixel' : currentTool === 'brush' ? 'brush' : 'segment',
       });
       localStorage.setItem('dudiic-drawing', JSON.stringify(strokes.current));
     }
@@ -393,12 +554,12 @@ export default function Workspace() {
     render();
   };
 
-  const onPointerLeave = () => {
-    hoverCell.current = null;
-    render();
-  };
-
-  const cursor = isSpacePressed ? 'grab' : 'crosshair';
+  const cursor =
+    isSpacePressed || currentTool === 'hand'
+      ? 'grab'
+      : currentTool === 'pen' || currentTool === 'brush' || currentTool === 'eraser'
+        ? 'none'
+        : 'crosshair';
 
   /* ---------- UI ---------- */
 
@@ -411,7 +572,13 @@ export default function Workspace() {
         overflow: 'hidden',
       }}
     >
-      <Toolbar canvasRef={canvasRef} />
+      <Toolbar
+        canvasRef={canvasRef}
+        currentTool={currentTool}
+        onToolChange={setCurrentTool}
+        zoom={zoom}
+        isSpacePressed={isSpacePressed}
+      />
 
       <canvas
         ref={canvasRef}
@@ -419,7 +586,6 @@ export default function Workspace() {
         onPointerMove={draw}
         onPointerUp={stopDrawing}
         onPointerCancel={stopDrawing}
-        onPointerLeave={onPointerLeave}
         style={{
           display: 'block',
           width: '100vw',
