@@ -33,17 +33,17 @@ const tools = [
   },
 
   {
-    id: 'square',
+    id: 'rectangle',
     icon: Square,
-    label: 'Square',
+    label: 'Rectangle',
     cursor: 'arrowCursor',
     cursorType: 'native',
   },
 
   {
-    id: 'circle',
+    id: 'oval',
     icon: Circle,
-    label: 'Circle',
+    label: 'Oval',
     cursor: 'arrowCursor',
     cursorType: 'native',
   },
@@ -79,11 +79,15 @@ const nativeCursors = {
   textCursor: 'text',
 } as const;
 
+// Keep the on-screen cursor element a sane size when zoom * size gets huge.
+const MAX_CURSOR_PX = 5000;
+
 type DrawingToolbarProps = {
   canvasRef: RefObject<HTMLCanvasElement | null>;
   currentTool?: string;
   onToolChange?: (tool: string) => void;
   zoom?: number;
+  brushSize?: number; // tool size in document pixels
   isSpacePressed?: boolean;
 };
 
@@ -92,10 +96,14 @@ export default function DrawingToolbar({
   currentTool: currentToolProp,
   onToolChange,
   zoom = 1,
+  brushSize = 1,
   isSpacePressed = false,
 }: DrawingToolbarProps) {
   const [internalTool, setInternalTool] = useState('pen');
   const currentTool = currentToolProp ?? internalTool;
+
+  // The custom cursor shows the real size of the stroke: size (doc px) * zoom.
+  const cursorSize = Math.min(MAX_CURSOR_PX, Math.max(1, zoom * brushSize));
 
   const squareCursorRef = useRef<HTMLDivElement>(null);
   const circleCursorRef = useRef<HTMLDivElement>(null);
@@ -111,21 +119,28 @@ export default function DrawingToolbar({
 
   const updateSquareCursorSize = useCallback(() => {
     if (!squareCursorRef.current) return;
-    const size = Math.max(1, zoom);
-    squareCursorRef.current.style.width = `${size}px`;
-    squareCursorRef.current.style.height = `${size}px`;
-    squareCursorRef.current.style.left = `${lastMousePos.current.x - size / 2}px`;
-    squareCursorRef.current.style.top = `${lastMousePos.current.y - size / 2}px`;
-  }, [zoom]);
+    squareCursorRef.current.style.width = `${cursorSize}px`;
+    squareCursorRef.current.style.height = `${cursorSize}px`;
+    squareCursorRef.current.style.left = `${lastMousePos.current.x - cursorSize / 2}px`;
+    squareCursorRef.current.style.top = `${lastMousePos.current.y - cursorSize / 2}px`;
+  }, [cursorSize]);
 
   const updateCircleCursorSize = useCallback(() => {
     if (!circleCursorRef.current) return;
-    const size = Math.max(1, zoom);
-    circleCursorRef.current.style.width = `${size}px`;
-    circleCursorRef.current.style.height = `${size}px`;
-    circleCursorRef.current.style.left = `${lastMousePos.current.x - size / 2}px`;
-    circleCursorRef.current.style.top = `${lastMousePos.current.y - size / 2}px`;
-  }, [zoom]);
+    circleCursorRef.current.style.width = `${cursorSize}px`;
+    circleCursorRef.current.style.height = `${cursorSize}px`;
+    circleCursorRef.current.style.left = `${lastMousePos.current.x - cursorSize / 2}px`;
+    circleCursorRef.current.style.top = `${lastMousePos.current.y - cursorSize / 2}px`;
+  }, [cursorSize]);
+
+  // ------------------------------------------
+  // Resize the cursors as soon as the size or zoom changes
+  // ------------------------------------------
+
+  useLayoutEffect(() => {
+    updateSquareCursorSize();
+    updateCircleCursorSize();
+  }, [updateSquareCursorSize, updateCircleCursorSize]);
 
   // ------------------------------------------
   // Change cursor when currentTool changes
@@ -210,15 +225,13 @@ export default function DrawingToolbar({
       lastMousePos.current = { x: event.clientX, y: event.clientY };
 
       if (current.cursor === 'squareCursor' && squareCursorRef.current) {
-        const size = Math.max(1, zoom);
-        squareCursorRef.current.style.left = `${event.clientX - size / 2}px`;
-        squareCursorRef.current.style.top = `${event.clientY - size / 2}px`;
+        squareCursorRef.current.style.left = `${event.clientX - cursorSize / 2}px`;
+        squareCursorRef.current.style.top = `${event.clientY - cursorSize / 2}px`;
       }
 
       if (current.cursor === 'circleCursor' && circleCursorRef.current) {
-        const size = Math.max(1, zoom);
-        circleCursorRef.current.style.left = `${event.clientX - size / 2}px`;
-        circleCursorRef.current.style.top = `${event.clientY - size / 2}px`;
+        circleCursorRef.current.style.left = `${event.clientX - cursorSize / 2}px`;
+        circleCursorRef.current.style.top = `${event.clientY - cursorSize / 2}px`;
       }
     };
 
@@ -257,7 +270,7 @@ export default function DrawingToolbar({
 
       document.documentElement.removeEventListener('pointerenter', handlePointerEnter);
     };
-  }, [currentTool, isSpacePressed, zoom, updateCircleCursorSize, updateSquareCursorSize]);
+  }, [currentTool, isSpacePressed, cursorSize, updateCircleCursorSize, updateSquareCursorSize]);
 
   // ------------------------------------------
   // Cleanup
@@ -294,11 +307,22 @@ export default function DrawingToolbar({
             title={label}
             onPointerDown={(event) => {
               lastMousePos.current = { x: event.clientX, y: event.clientY };
-              const size = Math.max(1, zoom);
-              squareCursorRef.current?.style.setProperty('left', `${event.clientX - size / 2}px`);
-              squareCursorRef.current?.style.setProperty('top', `${event.clientY - size / 2}px`);
-              circleCursorRef.current?.style.setProperty('left', `${event.clientX - size / 2}px`);
-              circleCursorRef.current?.style.setProperty('top', `${event.clientY - size / 2}px`);
+              squareCursorRef.current?.style.setProperty(
+                'left',
+                `${event.clientX - cursorSize / 2}px`,
+              );
+              squareCursorRef.current?.style.setProperty(
+                'top',
+                `${event.clientY - cursorSize / 2}px`,
+              );
+              circleCursorRef.current?.style.setProperty(
+                'left',
+                `${event.clientX - cursorSize / 2}px`,
+              );
+              circleCursorRef.current?.style.setProperty(
+                'top',
+                `${event.clientY - cursorSize / 2}px`,
+              );
               changeTool(id);
             }}
           >
